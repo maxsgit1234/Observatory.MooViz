@@ -26,3 +26,12 @@ C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\bin\Debug\Observatory.MooViz.p
 C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\bin\Debug\ObservatoryLib.dll
 C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\bin\Debug\ObservatoryLib.xml
 C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\obj\Debug\Observatory.MooViz.csprojResolveAssemblyReference.cache
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\obj\Debug\Observatory.MooViz.exe
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\obj\Debug\Observatory.MooViz.pdb
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\bin\Debug\ObservatoryLibs\OpenTKLicense.txt
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\bin\Debug\ObservatoryLibs\PythonForNETLicense.txt
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\bin\Debug\Observatory.MooViz.exe
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\bin\Debug\Observatory.MooViz.pdb
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\bin\Debug\ObservatoryLib.dll
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\bin\Debug\ObservatoryLib.xml
+C:\Users\Maxx\Documents\GitHub\Observatory.MooViz\Observatory.MooViz\obj\Debug\Observatory.MooViz.csprojResolveAssemblyReference.cache
