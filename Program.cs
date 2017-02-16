@@ -24,7 +24,10 @@ namespace Observatory.MooViz
 
             string dir = args[0];
 
-            new PlotGenerationsAndLineage(dir, 100);
+            var figure = new MultiAxisOptimizationPlot(dir, 100);
+            figure.Display();
+
+            //new PlotGenerationsAndLineage(dir, 100);
         }
     }
 }

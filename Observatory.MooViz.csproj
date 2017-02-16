@@ -50,6 +50,7 @@
   <ItemGroup>
     <Compile Include="MoeaObjects\Dims.cs" />
     <Compile Include="MoeaObjects\Generation.cs" />
+    <Compile Include="MultiAxisOptimizationPlot.cs" />
     <Compile Include="Utils.cs" />
     <Compile Include="MoeaObjects\Optimization.cs" />
     <Compile Include="PlotGenerationsAndLineage.cs" />

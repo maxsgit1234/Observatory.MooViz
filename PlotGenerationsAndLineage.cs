@@ -8,10 +8,11 @@ using ObservatoryLib;
 using ObservatoryLib.Extensions;
 using O = ObservatoryLib.Shorthand;
 using ObservatoryLib.Drawing;
+using System.Threading;
 
 namespace Observatory.MooViz
 {
-    public class PlotGenerationsAndLineage
+    public class PlotGenerationsAndLineage : Plot3D
     {
         #region Data members and state variables
 
@@ -20,9 +21,6 @@ namespace Observatory.MooViz
         // All the data for this iterative MOEA optimization, which is to be 
         // parsed from a set of files and folders:
         private Optimization optimization;
-
-        // The 3D plot object which will display in its own window:
-        private Plot3D plot = new Plot3D();
 
         // A drawing of points, lines, and polygons which will be used to
         // represent a single generation's data from the optimization.
@@ -65,24 +63,41 @@ namespace Observatory.MooViz
         // e.g., @"C:\Obs\MooViz\MooViz-master\MooViz-master"
         // "genToShow" is the initial 0-based generation to show when the 
         // plot first launches.
-        public PlotGenerationsAndLineage(string dir, int genToShow = 0)
+        public static PlotGenerationsAndLineage FromDir(
+            string dir, int genToShow = 0)
         {
-            this.genToShow = genToShow;
-
             // Load optimization output from files:
-            optimization = Optimization.FromDirectory(dir);
+            var optimization = Optimization.FromDirectory(dir);
 
             // O.W is shorthand to print to console...
             O.W("Done loading optimization data...");
 
+            return new PlotGenerationsAndLineage(optimization, genToShow);
+        }
+
+        public PlotGenerationsAndLineage(
+            Optimization opt, int genToShow = 0, Dims dims = null, 
+            bool showControls = true)
+        {
+            this.genToShow = genToShow;
+
+            if (dims != null)
+            {
+                _Dims = dims;
+                _Last = dims;
+            }
+
+            // Load optimization output from files:
+            optimization = opt;
+
             // Add the unit sphere representing the Pareto-optimal solutions:
-            Utils.AddUnitSphereOctant(plot);
+            Utils.AddUnitSphereOctant(this);
             
             // Add the drawings, one for Generation Mode and the other for 
             // Lineage mode. At first, the drawings are empty, but we will
             // populate them and add interactivity later:
-            plot.Add(genDrawing);
-            plot.Add(linDrawing);
+            Add(genDrawing);
+            Add(linDrawing);
 
             // Add the legends to the plot (we will only show/hide one at a
             // time depending on the mode).
@@ -91,7 +106,7 @@ namespace Observatory.MooViz
             // Add the buttons, text box, and labels to the screen for user
             // interactivity. Also, link up their events to the actions we
             // take to handle those events:
-            AddScreenControlsForNavigationEtc();
+            AddScreenControlsForNavigationEtc(showControls);
 
             AddDimDropdowns();
 
@@ -100,36 +115,40 @@ namespace Observatory.MooViz
             // When the user clicks on any of the points in the Generation Mode
             // drawing, we want to switch views to show the Lineage mode:
             genDrawing.NamedItemClicked += gdrawing_NamedItemClicked;
+            genDrawing.NamedItemMouseOver += genDrawing_NamedItemMouseOver;
 
             // Configure the camera to have an appropriate zoom and 
             // orientation when initially displayed:
-            plot.Axes.SetMinMax(
+            Axes.SetMinMax(
                 new Vector3d(-0.1,-0.1,-0.1), new Vector3d(3,3,3), true);
-            plot.Camera.SetOrientation(
+            Camera.SetOrientation(
                 Matrix3.RotateZ(0.001 * (-500)) * new Vector3d(-1, -1, -1), true);
-
-            // Set axis labels:
-            SetLabels();
 
             // Similar to "axis equal;" in MATLAB. Fixes the relative scaling
             // to be the same on all 3 axes (so a sphere actually looks like 
             // a sphere, etc)
-            plot.Axes.SetScaleEquality(true);
-
-            // Call this to launch the plot in a new window.
-            plot.Display();
+            Axes.SetScaleEquality(true);
 
             // Update the plot to show the generation that we want to
             // show initially:
-            DrawGenerationMode();
+            UpdateDrawings();
+            SetLabels();
+
+            this.FrameComplete += PlotGenerationsAndLineage_FrameComplete;
+        }
+
+        void PlotGenerationsAndLineage_FrameComplete()
+        {
+            UpdateDrawings();
+            this.FrameComplete -= PlotGenerationsAndLineage_FrameComplete;
         }
 
         private void SetLabels()
         {
-            plot.Axes.SetLabels("D" + _Dims.X, "D" + _Dims.Y, "D" + _Dims.Z);
+            Axes.SetLabels("D" + _Dims.X, "D" + _Dims.Y, "D" + _Dims.Z);
         }
 
-        private void AddScreenControlsForNavigationEtc()
+        private void AddScreenControlsForNavigationEtc(bool showControls)
         {
             // Initialize controls for the generation selection:
             var label = new ScreenLabel("Generation");
@@ -161,8 +180,9 @@ namespace Observatory.MooViz
             mainPanel.AddToStack(clearPanel);
 
             // Add the stack panels to the "screen" level of the plot:
-            plot.Stage.PlaceChild(mainPanel,
-                Placement.TopCenter(), enableDragging: false);
+            if (showControls)
+                Stage.PlaceChild(mainPanel,
+                    Placement.TopCenter(), enableDragging: false);
 
             // Instead of toggling visibility for btnClear, use this if in
             // software rendering mode (visiblity not well-supported).
@@ -172,19 +192,131 @@ namespace Observatory.MooViz
             // Add events to handle each of the interactions from the 
             // controls we just added:
             btnGo.Click += btnGo_Click;
-            btnClear.Click += _ => DrawGenerationMode();
+            btnClear.Click += _ => OnGoingToGenerationMode();
             btnPrev.Click += _ => NavigatePrev();
             btnNext.Click += _ => NavigateNext();
         }
-        
+
+        public event Action<int> GoingToGeneration;
+        private void OnGoingToGeneration(int gen)
+        {
+            Run(() =>
+            {
+                if (GoingToGeneration != null)
+                    GoingToGeneration(gen);
+            });
+
+            GoToGeneration(gen);
+        }
+
+        public event Action<Solution> GoingToLineageMode;
+        private void OnGoingToLineageMode(Solution sln)
+        {
+            Run(() =>
+            {
+                if (GoingToLineageMode != null)
+                    GoingToLineageMode(sln);
+            });
+
+            GoToLineageMode(sln);
+        }
+
+        public event Action<Solution> HighlightingSolution;
+        private void OnHighlightingSolution(Solution sln)
+        {
+            Run(() =>
+            {
+                if (HighlightingSolution != null)
+                    HighlightingSolution(sln);
+            });
+
+            HighlightSolution(sln);
+        }
+
+        private Solution _LastHighlight;
+
+        public void HighlightSolution(Solution sln)
+        {
+            Guid slnId;
+            lock (_Baton)
+            {
+                if (!_Names.ContainsKey(sln))
+                    return;
+
+                slnId = _Names.Value(sln);
+            }
+            genDrawing.UpdatePointColors(slnId, 
+                new Color[]{Colors.BrightOrange, Colors.LightOrange});
+
+            if (_LastHighlight != null && _LastHighlight != sln)
+            {
+                Guid lastId;
+                lock (_Baton)
+                {
+                    if (!_Names.ContainsKey(_LastHighlight))
+                        return;
+                    lastId = _Names.Value(_LastHighlight);
+                }
+
+                genDrawing.UpdatePointColors(lastId, new Color[]{
+                    _ParentColors[_LastHighlight], 
+                    _ChildColors[_LastHighlight]});
+            }
+            _LastHighlight = sln;
+        }
+
+
+        public event Action GoingToGenerationMode;
+        private void OnGoingToGenerationMode()
+        {
+            Run(() =>
+            {
+                if (GoingToGenerationMode != null)
+                    GoingToGenerationMode();
+            });
+
+            GoToGenerationMode();
+        }
+
+        private void Run(Action a)
+        {
+            ThreadPool.QueueUserWorkItem(new WaitCallback(_ =>
+            {
+                a();
+            }));
+        }
+
+        public void GoToGeneration(int gen)
+        {
+            genToShow = gen;
+            DrawGenerationMode();
+        }
+
+        public void GoToLineageMode(Solution sln)
+        {
+            btnClear.IsVisible = true;
+
+            // Instead of toggling visibility for btnClear, use this if in
+            // software rendering mode (visiblity not well-supported).
+            //plot.Stage.UpdatePlacement(btnClear, Placement.BottomCenter()
+            //    .WithOffset(new Vector2d(0, -40)));
+
+            DrawLineageMode(sln);
+        }
+
+        public void GoToGenerationMode()
+        {
+            DrawGenerationMode();
+        }
+
         private void AddLegends()
         {
-            legGen = plot.AddLegend();
+            legGen = AddLegend();
             legGen.AddItem("Surviving Parents", Colors.Blue);
             legGen.AddItem("Surviving Offspring", Colors.BrightGreen);
             legGen.AddItem("Failing Solutions", Colors.Red);
 
-            legLin = plot.AddLegend();
+            legLin = AddLegend();
             legLin.AddItem("Ancestors", Colors.Gray);
             legLin.AddItem("Firstling", Colors.DarkBlue);
             legLin.AddItem("Descendants", Colors.Black);
@@ -199,9 +331,9 @@ namespace Observatory.MooViz
             List<string> options = Enumerable.Range(0,
                 optimization.NumDims).Select(i => "D" + i.ToString()).ToList();
 
-            dropX = new Dropdown(options, 75, 20, 100, 0);
-            dropY = new Dropdown(options, 75, 20, 100, 1);
-            dropZ = new Dropdown(options, 75, 20, 100, 2);
+            dropX = new Dropdown(options, 75, 20, 100, _Dims.X);
+            dropY = new Dropdown(options, 75, 20, 100, _Dims.Y);
+            dropZ = new Dropdown(options, 75, 20, 100, _Dims.Z);
 
             dropX.ItemSelected += s => UpdateDims();
             dropY.ItemSelected += s => UpdateDims();
@@ -213,7 +345,7 @@ namespace Observatory.MooViz
                 WithLabel("Y: ", dropY),
                 WithLabel("Z: ", dropZ));
 
-            plot.Stage.PlaceChild(panel, 
+            Stage.PlaceChild(panel, 
                 Placement.LeftMiddle(), enableDragging: false);
         }
 
@@ -289,22 +421,22 @@ namespace Observatory.MooViz
 
         private void NavigatePrev()
         {
-            genToShow--;
+            int gen = genToShow-1;
 
-            if (genToShow <= 0)
-                genToShow = 0;
+            if (gen <= 0)
+                gen = 0;
 
-            DrawGenerationMode();
+            OnGoingToGeneration(gen);
         }
 
         private void NavigateNext()
         {
-            genToShow++;
+            int gen = genToShow+1;
 
-            if (genToShow >= optimization.Generations.Length)
-                genToShow = optimization.Generations.Length;
+            if (gen >= optimization.Generations.Length)
+                gen = optimization.Generations.Length;
 
-            DrawGenerationMode();
+            OnGoingToGeneration(gen);
         }
 
 
@@ -326,8 +458,7 @@ namespace Observatory.MooViz
                 return;
             }
 
-            genToShow = gen;
-            DrawGenerationMode();
+            OnGoingToGeneration(gen);
         }
 
         // Switch to Lineage mode when the user clicks on a Solution point
@@ -344,14 +475,19 @@ namespace Observatory.MooViz
                 return;
             }
 
-            btnClear.IsVisible = true;
+            Solution sln = _Names.Key(obj.Id);
 
-            // Instead of toggling visibility for btnClear, use this if in
-            // software rendering mode (visiblity not well-supported).
-            //plot.Stage.UpdatePlacement(btnClear, Placement.BottomCenter()
-            //    .WithOffset(new Vector2d(0, -40)));
+            OnGoingToLineageMode(sln);
+        }
 
-            DrawLineageMode(_Names.Key(obj.Id));
+        private void genDrawing_NamedItemMouseOver(Guid obj)
+        {
+            if (!_Names.ContainsValue(obj))
+                return;
+
+            Solution sln = _Names.Key(obj);
+
+            OnHighlightingSolution(sln);
         }
 
         #endregion
@@ -373,7 +509,7 @@ namespace Observatory.MooViz
 
             // Refresh the layout of the controls panel, because they might
             // have changed size slightly when the display text was altered:
-            plot.Stage.UpdatePlacement(genPanel, Placement.TopCenter());
+            Stage.UpdatePlacement(genPanel, Placement.TopCenter());
 
             // Current generation:
             Generation gen = optimization.Generations[genToShow];
@@ -397,6 +533,9 @@ namespace Observatory.MooViz
                 Color c1 = sln.Survived ? Colors.DarkBlue : Colors.DarkRed;
                 Color c2 = sln.ChildSurvived ? Colors.BrightGreen : Colors.Red;
 
+                _ParentColors.Add(sln, c1);
+                _ChildColors.Add(sln, c2);
+
                 // Add 2 points: 1 representing the parent; the other the child:
                 genDrawing.AddPoint(
                     sln.Coordinates(_Last, _Dims,_TweenFrac), 
@@ -413,7 +552,12 @@ namespace Observatory.MooViz
             }
             genDrawing.Commit();
         }
-        
+
+
+        private Dictionary<Solution, Color> _ParentColors 
+            = new Dictionary<Solution, Color>();
+        private Dictionary<Solution, Color> _ChildColors
+            = new Dictionary<Solution, Color>();
 
         // Main method to update everything on the plot for Lineage Mode:
         private void DrawLineageMode(Solution sln)
@@ -555,7 +699,7 @@ namespace Observatory.MooViz
             {
                 for (int k = 0; k < lbls.Count; k++)
                 {
-                    var gl = plot.Text.AddToPlot(lbls[k],
+                    var gl = Text.AddToPlot(lbls[k],
                         lpos[k].X, lpos[k].Y, lpos[k].Z);
                     _GenLabels.Add(gl);
                 }
@@ -571,13 +715,18 @@ namespace Observatory.MooViz
         // re-create them based on input or state change:
         private void ClearDrawingsAndLabelsForModeChange(bool isGenMode)
         {
-            linDrawing.Clear(commit:isGenMode);
-            genDrawing.Clear(commit:!isGenMode);
             foreach (ISyncable gl in _GenLabels)
-                plot.Remove(gl);
-            _GenLabels.Clear();
-            _Names.Clear();
+                Remove(gl);
 
+            lock (_Baton)
+            {
+                linDrawing.Clear(commit: isGenMode);
+                genDrawing.Clear(commit: !isGenMode);
+                _GenLabels.Clear();
+                _Names.Clear();
+                _ParentColors.Clear();
+                _ChildColors.Clear();
+            }
             legGen.IsVisible = isGenMode;
             legLin.IsVisible = !isGenMode;
             btnClear.IsVisible = !isGenMode;
